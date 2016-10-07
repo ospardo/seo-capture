@@ -94,8 +94,8 @@ class Session(object):
             year = time.strftime("%Y", time.gmtime()) # 2016
             month = time.strftime("%B", time.gmtime())[0:3].lower() # oct
             day = time.strftime("%d", time.gmtime()) # 07
-            base_name = "-band_"str(self.exposure_time)+"sec"
-            base_name += "_bin"+str(self.binning)+"_"year+month+day+"_"
+            base_name = "-band_"+str(self.exposure_time)+"sec"
+            base_name += "_bin"+str(self.binning)+"_"+year+month+day+"_"
             base_name += self.user+"_num"
 
             # take exposures for each filter
@@ -161,7 +161,8 @@ class Session(object):
         """
         if self.close_after is True:
             self.close()
-                    
+
+            
     def __log(self, msg: str, color: str = "white") -> bool:
         """ Prints a log message to STDOUT. Returns True if successful, False
         otherwise.
@@ -173,6 +174,7 @@ class Session(object):
         print(log)
         return True
 
+    
     def __run_command(self, command: str) -> int:
         """ Executes a shell command either locally, or remotely via ssh. 
         Returns the status code of the shell command upon completion. 
