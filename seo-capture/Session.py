@@ -1,5 +1,6 @@
 from typing import List, Union
 from Util import find_value
+import time
 import os
 
 class Session(object):
@@ -35,28 +36,34 @@ class Session(object):
                     printed to STDOUT and NOT executed. Useful for debugging.
 
         """
-        
-        # A list of strings containing catalog names of objects to be imaged
-        # Currently, the objects are imaged in the order they are specified.
-        self.targets = []
-
-        # The exposure time in seconds for each science image
-        self.exposure_time = exposure_time
-
-        # The number of science images to be taken per filter/clear
-        self.exposure_count = exposure_count
-
-        # Whether R, G, B filters should be used 
-        self.rgb = rgb
-
-        # What binning to use
-        self.binning = binning
-
         # The user who created the session
         if user == "": # take environment variable if not specified
             self.user = os.environ['USER']
         else:
             self.user = user
+            
+        self.__log("Creating new imaging session for user "+str(self.user)+"...",
+                   color="green")
+        # A list of strings containing catalog names of objects to be imaged
+        # Currently, the objects are imaged in the order they are specified.
+        self.targets = targets
+        self.__log("Session Targets: "+str(self.targets))
+
+        # The exposure time in seconds for each science image
+        self.exposure_time = exposure_time
+        self.__log("Exposure Time: "+str(self.exposure_time)+"s")
+
+        # The number of science images to be taken per filter/clear
+        self.exposure_count = exposure_count
+        self.__log("Exposure Count: "+str(self.exposure_count))
+
+        # Whether I, R, G filters should be used 
+        self.rgb = rgb
+        self.__log("Using RGB filters: "+str(self.rgb))
+
+        # What binning to use
+        self.binning = binning
+        self.__log("Binning: "+str(self.binning))
 
         # Whether this is a trial, test_only run
         self.test_only = test_only
@@ -65,7 +72,59 @@ class Session(object):
         """ Starts the execution of the imaging session; return's status
         once imaging run is completed. 
         """
-        pass
+        # image each target
+        for target in self.targets:
+
+            # check whether object is visible, and try panning
+            # telescope to point at object
+            if self.__goto_target(target) is False:
+                self.__log("Unable to point telescope at "+target+". Object"
+                           " is most likely not visible or there has been a"
+                           " telescope error. Skipping "+target+"...", color="red")
+                continue # try imaging next target
+
+            # telescope was succesfully pointed at object
+            # calculate necessary filters
+            if self.rgb is True:
+                filters = {'i', 'g', 'b'}
+            else:
+                filters = {'clear'}
+
+            # variables to produce seo file format name
+            year = time.strftime("%Y", time.gmtime()) # 2016
+            month = time.strftime("%B", time.gmtime())[0:3].lower() # oct
+            day = time.strftime("%d", time.gmtime()) # 07
+            base_name = "-band_"str(self.exposure_time)+"sec"
+            base_name += "_bin"+str(self.binning)+"_"year+month+day+"_"
+            base_name += self.user+"_num"
+
+            # take exposures for each filter
+            for f in filters:
+                self.__change_filter(f)
+                # take exposures! 
+                for n in range(self.exposure_count):
+                    filename = str(target)+"_"+str(f)+base_name+str(n)+"_seo"
+                    self.__log("Taking exposure {} for {}".format(n, target))
+                    self.__take_exposure(filename)
+
+            # reset filter to clear
+            self.__change_filter('clear')
+
+            # take exposure_count darks
+            for n in range(self.exposure_count):
+                filename = str(target)+"_clear"+base_name+str(n)+"_seo"
+                self.__take_dark(filename)
+
+            # take exposure count biases
+            for n in range(self.exposure_count):
+                filename = str(target)+"_clear"+base_name+str(n)+"_seo"
+                self.__take_bias(filename)
+
+        if self.close_after is True:
+            self.close()
+
+        return True
+
 
     def add_target(self, target: Union[str, List[str]]) -> 'Session':
         """ Adds an additional list of targets to a session. Currently cannot 
@@ -89,6 +148,30 @@ class Session(object):
         """
         self.exposure_count = exposure_count
         return self
+
+    def close() -> bool:
+        """ Closes the current session, closes the dome, and logs out. Returns
+        True if successful in closing down, False otherwise.
+        """
+        return self.__run_command("closedown && logout")
+
+    def __del__():
+        """ Closes the telescope and logsout of any sessions when the Session
+        is garbage-collected by Python.
+        """
+        if self.close_after is True:
+            self.close()
+                    
+    def __log(self, msg: str, color: str = "white") -> bool:
+        """ Prints a log message to STDOUT. Returns True if successful, False
+        otherwise.
+        """
+        colors = {"red":"31", "green":"32", "blue":"34", "cyan":"36",
+                  "white":"37", "yellow":"33", "magenta":"34"}
+        logtime = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
+        log = "\033[1;"+colors[color]+"m"+logtime+": "+msg+"\033[0m"
+        print(log)
+        return True
 
     def __run_command(self, command: str) -> int:
         """ Executes a shell command either locally, or remotely via ssh. 
@@ -191,6 +274,8 @@ class Session(object):
         """
         if name == "h-alpha":
             return self.__run_command("pfilter h-alpha")
+        elif name == "clear":
+            return self.__run_command("pfilter clear")
         else:
             return self.__run_command("pfilter "+name+"-band")
 
@@ -202,6 +287,7 @@ class Session(object):
         cmd = "image time="+self.exposure_time+" bin="+self.binning+" "
         cmd += "outfile="+filename+".fits"
         status = self.__run_command(cmd)
+        self.__log("Saved exposure frame to "+filename, color="cyan")
         return status
 
     def __take_bias(self, filename: str) -> bool:
@@ -209,8 +295,9 @@ class Session(object):
         filename. Returns True if imaging was successful, False otherwise. 
         """
         cmd = "image time=0.5 bin="+self.binning+" "
-        cmd += "outfile="+filename+"_BIAS.fits"
+        cmd += "outfile="+filename+"_bias.fits"
         status = self.__run_command(cmd)
+        self.__log("Saved bias frame to "+filename, color="cyan")
         return status
 
     def __take_dark(self, filename: str) -> bool:
@@ -219,8 +306,9 @@ class Session(object):
         was successful, False otherwise. 
         """
         cmd = "image time="+self.exposure_time+" bin="+self.binning+" dark "
-        cmd += "outfile="+filename+"_DARK.fits"
+        cmd += "outfile="+filename+"_dark.fits"
         status = self.__run_command(cmd)
+        self.__log("Saved dark frame to "+filename, color="cyan")
         return status
 
 if __name__ == '__main__':
