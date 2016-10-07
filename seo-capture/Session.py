@@ -1,4 +1,6 @@
 from typing import List, Union
+from Util import find_value
+import os
 
 class Session(object):
     """
@@ -8,8 +10,14 @@ class Session(object):
     as well as clear darks, biases and flats. 
     """
     
-    def __init__(self, targets: List[str], exposure_time: float, exposure_count: int = 1,
-                 rgb: bool = True, binning: int = 2, test_only = False):
+    def __init__(self, targets: List[str],
+                 exposure_time: float,
+                 exposure_count: int = 1,
+                 rgb: bool = True,
+                 binning: int = 2,
+                 user: str = "",
+                 close_after: bool = True, 
+                 test_only: bool = False):
         """ Creates a new imaging session with desired parameters.
 
         Creates a new imaging session that will image each target with exposure_count 
@@ -21,6 +29,8 @@ class Session(object):
             exposure_time: the time for each exposure in seconds
             exposure_count: the number of exposures to take for each filter
             rgb: whether to take images with each of the primary filters
+            user: the username of the user who requested/created the session
+            close_after: whether the dome should close at the end of the session
             test_only: if this is True, telescope control commands will be
                     printed to STDOUT and NOT executed. Useful for debugging.
 
@@ -42,9 +52,14 @@ class Session(object):
         # What binning to use
         self.binning = binning
 
+        # The user who created the session
+        if user == "": # take environment variable if not specified
+            self.user = os.environ['USER']
+        else:
+            self.user = user
+
         # Whether this is a trial, test_only run
         self.test_only = test_only
-
 
     def execute(self) -> int: 
         """ Starts the execution of the imaging session; return's status
@@ -63,6 +78,17 @@ class Session(object):
         self.targets.append(target)
         return self
 
+    def set_exposure_time(self, exposure_time: float) -> 'Session':
+        """ Changes the exposure time of the imaging session to a new value
+        """
+        self.exposure_time = exposure_time
+        return self
+
+    def set_exposure_count(self, exposure_count: int) -> 'Session':
+        """ Changes the exposure count of the imaging session to a new value
+        """
+        self.exposure_count = exposure_count
+        return self
 
     def __run_command(self, command: str) -> int:
         """ Executes a shell command either locally, or remotely via ssh. 
@@ -72,19 +98,27 @@ class Session(object):
             print(command)
     
     def __weather_ok(self) -> bool:
-        """ Checks whether there is no rain (rain=0) and that it is less than 40%
-        cloudy. Returns true if the weather is OK to open up, false otherwise. 
+        """ Checks whether the sun has set, there is no rain (rain=0) and that 
+        it is less than 40% cloudy. Returns true if the weather is OK to open up, 
+        false otherwise. 
         """
+
+        # check sun
+        sun = self.__run_command("sun")
+        if float(find_value("alt", sun)) >= -1.0:
+            return False
+
+        # sun is good - check for weather
         weather = self.__run_command("tx taux")
+
+        # if this cmd failed, return false to be safe
+        if weather == None or weather == "":
+            return False
+        
         rain = 1 # default to being raining just in case
         cloud = 1 # default to being cloudy just in case
-        for metric in weather.split():
-            # check for rain
-            if metric[0:5] == "rain=":
-                rain = float(metric[5:])
-            # check for cloud
-            if metric[0:6] == "cloud=":
-                cloud = float(metric[6:])
+        rain = float(find_value("rain", weather)) # find rain=val
+        cloud = float(find_value("cloud", weather)) # find cloud=val
 
         if rain == 0 and cloud < 0.4:
             return True
@@ -93,9 +127,14 @@ class Session(object):
     
     def __open_dome(self) -> bool:
         """ Checks that the weather is acceptable, and then opens the dome, 
-        while also enabling tracking. 
+        if it is not already open, and  also enables tracking. 
         """
-        if self.weather_ok() == True:
+        # check if dome is already open
+        if self.__dome_status() == True:
+            return True
+
+        # check that weather is OK to open
+        if self.__weather_ok() == True:
             result = self.__run_command("openup nocloud &&" 
                                         "keepopen maxtime=20000 slit"
                                         "&& track on")
@@ -105,6 +144,17 @@ class Session(object):
                 return False
         else:
             return False
+
+    def __dome__status(self) -> bool:
+        """ Checks whether the slit is open or closed. Returns True if open, 
+        False if closed.
+        """
+        slit = self.__run_command("tx slit")
+        result = find_value("slit", slit)
+        if result == "open":
+            return True
+
+        return False
 
     def __goto_target(self, target: str) -> bool:
         """ Points the telescope at the target in question. Returns True if
@@ -123,15 +173,55 @@ class Session(object):
         """
         cmd = "catalog "+target+" | altaz"
         altaz = self.__run_command(cmd).split()
-        if altaz[0][0:4] == "alt=":
-            alt = float(altaz[0][4:])
-            if alt >= 40:
-                return True
+        if float(find_value("alt", altaz)) >= 40:
+            return True
 
         return False
 
+    def __current_filter(self) -> str:
+        """ Returns the name of the currently enabled filter, or
+        clear otherwise. 
+        """
+        return self.__run_command("pfilter")
+        
+    def __change_filter(self, name: str) -> bool:
+        """ Changes filter to the new specified filter. Options are: 
+        u, g, r, i, z, clear, h-alpha. Returns True if successful, 
+        False otherwise
+        """
+        if name == "h-alpha":
+            return self.__run_command("pfilter h-alpha")
+        else:
+            return self.__run_command("pfilter "+name+"-band")
 
+    def __take_exposure(self, filename: str) -> bool:
+        """ Takes an exposure of length self.exposure_time saves it in the FITS 
+        file with the specified filename. Returns True if imaging
+        was successful, False otherwise. 
+        """
+        cmd = "image time="+self.exposure_time+" bin="+self.binning+" "
+        cmd += "outfile="+filename+".fits"
+        status = self.__run_command(cmd)
+        return status
+
+    def __take_bias(self, filename: str) -> bool:
+        """ Takes a bias frame and saves it in the FITS file with the specified
+        filename. Returns True if imaging was successful, False otherwise. 
+        """
+        cmd = "image time=0.5 bin="+self.binning+" "
+        cmd += "outfile="+filename+"_BIAS.fits"
+        status = self.__run_command(cmd)
+        return status
+
+    def __take_dark(self, filename: str) -> bool:
+        """ Takes an dark exposure of length self.exposure_time saves it in the
+        FITS file with the specified filename. Returns True if imaging
+        was successful, False otherwise. 
+        """
+        cmd = "image time="+self.exposure_time+" bin="+self.binning+" dark "
+        cmd += "outfile="+filename+"_DARK.fits"
+        status = self.__run_command(cmd)
+        return status
 
 if __name__ == '__main__':
     s = Session(['m31'], 60, 5, test_only=True)
-    s.weather_ok()
