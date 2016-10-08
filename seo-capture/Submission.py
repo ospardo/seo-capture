@@ -3,8 +3,9 @@
 import zmq
 import time
 import Session
+import json
 
-class Submitter(object):
+class Submission(object):
 
     def __init__(self, port: int = 27748):
         """ """
@@ -26,10 +27,23 @@ class Submitter(object):
         return self
     
     def submit(self, session: Session) -> 'Submitter':
-        self.socket.send_string(session)
+        self.socket.send_string(self.serialize(session))
+        return self
 
     def recv(self) -> str:
         self.socket.recv()
+
+    def serialize(self, session: Session) -> list:
+        ser = {}
+        ser['targets'] = json.dumps(session.targets)
+        ser['exposure_time'] = json.dumps(session.exposure_time)
+        ser['exposure_count'] = json.dumps(session.exposure_count)
+        ser['rgb'] = json.dumps(session.rgb)
+        ser['binning'] = json.dumps(session.binning)
+        ser['user'] = json.dumps(session.user)
+        ser['close_after'] = json.dumps(session.close_after)
+        ser['test_only'] = json.dumps(session.test_only)
+        return json.dumps(ser)
 
     def __log(self, msg: str, color: str = "white") -> bool:
         """ Prints a log message to STDOUT. Returns True if successful, False
@@ -44,8 +58,11 @@ class Submitter(object):
 
 
 if __name__ == "__main__":
-    s = Submitter().connect()
-    for request in range (1,10):
-        s.submit("Hello")
-        message = s.recv()
-        print("Received reply "+str(request)+"["+str(message)+"]")
+    s = Submission().connect()
+    session = Session.Session(['m31'], 60)
+    s.submit(session)
+    # print(s.serialize(session))
+    # for request in range (1,10):
+    #     s.submit("Hello")
+    #     message = s.recv()
+    #     print("Received reply "+str(request)+"["+str(message)+"]")

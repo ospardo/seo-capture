@@ -14,3 +14,7 @@ tests:
 docs:
 	pip install -q -r docs/requirements.txt
 	$(info "Doc generation using pdoc not currently implemented")
+
+.PHONY: clean
+clean:
+	rm -rf seo-capture/__pycache__

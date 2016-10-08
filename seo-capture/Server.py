@@ -34,8 +34,17 @@ class Server(object):
         # file name for JSON store
         currdate = time.strftime("%Y-%m-%d", time.gmtime())
         self.filename = currdate+"_queue.json"
+        self.file = open(self.filename, 'w', 1)
+        if self.file is None:
+            self.__log("Unable to open queue!", color="red")
         self.__log("Storing queue in %s" % self.filename)
 
+
+    def __del__(self):
+        """ Called when the server is garbage collected - this closes
+        the JSON file (which should have already been written to disk)
+        """
+        self.file.close()
         
     def start(self):
         """ Starts the servers listening for new requests; server blocks
@@ -43,11 +52,12 @@ class Server(object):
         """
         while True:
             message = self.socket.recv()
-            self.process_message(message)
             self.__log("Received message from a client...")
+            self.process_message(message)
             time.sleep(1)
             self.socket.send_string("RECEIVED")
 
+            
     def __log(self, msg: str, color: str = "white") -> bool:
         """ Prints a log message to STDOUT. Returns True if successful, False
         otherwise.
@@ -61,8 +71,10 @@ class Server(object):
 
 
     def process_message(self, msg: str) -> list:
-        pass
-    
+        """ This takes a raw message from zmq and writes the JSON data
+        into the queue file. 
+        """
+        self.file.write(str(msg)+"\n")
 
 if __name__ == "__main__":
     server = Server()

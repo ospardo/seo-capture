@@ -65,6 +65,9 @@ class Session(object):
         self.binning = binning
         self.__log("Binning: "+str(self.binning))
 
+        # Whether to close the dome after the session
+        self.close_after = close_after
+
         # Whether this is a trial, test_only run
         self.test_only = test_only
 
@@ -149,13 +152,13 @@ class Session(object):
         self.exposure_count = exposure_count
         return self
 
-    def close() -> bool:
+    def close(self) -> bool:
         """ Closes the current session, closes the dome, and logs out. Returns
         True if successful in closing down, False otherwise.
         """
         return self.__run_command("closedown && logout")
 
-    def __del__():
+    def __del__(self):
         """ Closes the telescope and logsout of any sessions when the Session
         is garbage-collected by Python.
         """
@@ -170,7 +173,7 @@ class Session(object):
         colors = {"red":"31", "green":"32", "blue":"34", "cyan":"36",
                   "white":"37", "yellow":"33", "magenta":"34"}
         logtime = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
-        log = "\033[1;"+colors[color]+"m"+logtime+": "+msg+"\033[0m"
+        log = "\033[1;"+colors[color]+"m"+logtime+" SESSION: "+msg+"\033[0m"
         print(log)
         return True
 
