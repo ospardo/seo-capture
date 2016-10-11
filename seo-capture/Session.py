@@ -1,5 +1,6 @@
 from typing import List, Union
 from Util import find_value
+import Util
 import time
 import os
 
@@ -18,7 +19,7 @@ class Session(object):
                  binning: int = 2,
                  user: str = "",
                  close_after: bool = True, 
-                 test_only: bool = False):
+                 demo: bool = False):
         """ Creates a new imaging session with desired parameters.
 
         Creates a new imaging session that will image each target with exposure_count 
@@ -32,7 +33,7 @@ class Session(object):
             rgb: whether to take images with each of the primary filters
             user: the username of the user who requested/created the session
             close_after: whether the dome should close at the end of the session
-            test_only: if this is True, telescope control commands will be
+            demo: if this is True, telescope control commands will be
                     printed to STDOUT and NOT executed. Useful for debugging.
 
         """
@@ -68,8 +69,8 @@ class Session(object):
         # Whether to close the dome after the session
         self.close_after = close_after
 
-        # Whether this is a trial, test_only run
-        self.test_only = test_only
+        # Whether this is a trial, demo run
+        self.demo = demo
 
     def execute(self) -> int: 
         """ Starts the execution of the imaging session; return's status
@@ -170,19 +171,14 @@ class Session(object):
         """ Prints a log message to STDOUT. Returns True if successful, False
         otherwise.
         """
-        colors = {"red":"31", "green":"32", "blue":"34", "cyan":"36",
-                  "white":"37", "yellow":"33", "magenta":"34"}
-        logtime = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
-        log = "\033[1;"+colors[color]+"m"+logtime+" SESSION: "+msg+"\033[0m"
-        print(log)
-        return True
+        return Util.log(msg, color)
 
     
     def __run_command(self, command: str) -> int:
         """ Executes a shell command either locally, or remotely via ssh. 
         Returns the status code of the shell command upon completion. 
         """
-        if self.test_only == True:
+        if self.demo == True:
             print(command)
     
     def __weather_ok(self) -> bool:
@@ -317,4 +313,4 @@ class Session(object):
         return status
 
 if __name__ == '__main__':
-    s = Session(['m31'], 60, 5, test_only=True)
+    s = Session(['m31'], 60, 5, demo=True)

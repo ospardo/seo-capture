@@ -1,9 +1,50 @@
 #!/usr/local/bin/python3
 
-import argparse
-parser = argparse.ArgumentParser()
+import sys
+sys.path.append("../seo-capture/")
+sys.path.append("seo-capture/")
+from Util import log
+import Session
 
-parser.parse_args()
+# break up command line
+if len(sys.argv) < 2:
+    print("usage: seo-capture -targets={<TARGET1>,<TARGET2>,...} -time=<TIME>\n"
+          "                   [-count=<1>] [-filters={i,r,g}]")
+    exit()
+    
+raw_args = sys.argv
 
+# default values
+args = {'targets':[],  'time': 60.0, 'count': 5, 'binning': 2,
+        'rgb': True, 'test_only': False}
+
+# iterate over the args looking for required and optional
+for arg in raw_args[1:]:
+
+    subargs = arg.split('=')
+    curr_arg = subargs[0][1:]
+
+    # check for targets
+    if curr_arg == "targets":
+        args['targets'].append(subargs[1])
+
+    # check for time
+    elif curr_arg == "time":
+        args['time'] = float(subargs[1])
+        continue
+    elif curr_arg == "count":
+        args['count'] = int(subargs[1])
+        continue
+    elif curr_arg == "d":
+        args['demo'] = True
+    elif curr_arg == "binning":
+        args['binning'] = int(subargs[1])
+    else:
+        print("Unable to parse commmand line argument: "+arg)
+
+
+s = Session.Session(args['targets'], args['time'], exposure_count = args['count'],
+            rgb = args['rgb'], binning = args['binning'], demo = args['demo'])
+            
 
 
