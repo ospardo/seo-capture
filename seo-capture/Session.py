@@ -1,8 +1,10 @@
 from typing import List, Union
 from Util import find_value
+import subprocess
 import Util
 import time
 import os
+
 
 class Session(object):
     """
@@ -76,6 +78,11 @@ class Session(object):
         """ Starts the execution of the imaging session; return's status
         once imaging run is completed. 
         """
+
+        # check if the dome is already open
+        if self.__dome_status() is False: # dome is closed
+            self.__open_dome()
+            
         # image each target
         for target in self.targets:
 
@@ -163,8 +170,8 @@ class Session(object):
         """ Closes the telescope and logsout of any sessions when the Session
         is garbage-collected by Python.
         """
-        if self.close_after is True:
-            self.close()
+#        if self.close_after is True:
+#            self.close()
 
             
     def __log(self, msg: str, color: str = "white") -> bool:
@@ -174,12 +181,21 @@ class Session(object):
         return Util.log(msg, color)
 
     
-    def __run_command(self, command: str) -> int:
+    def __run_command(self, command: str) -> str:
         """ Executes a shell command either locally, or remotely via ssh. 
-        Returns the status code of the shell command upon completion. 
+        Returns the byte string representing the captured STDOUT
         """
         if self.demo == True:
-            print(command)
+            self.__log("[DEMO] Executing {}".format(command), color="magenta")
+        else:
+            self.__log("Executing {}".format(command), color="magenta")
+            try:
+                return subprocess.check_output(command)
+            except:
+                self.__log("Failed while executing {}".format(command), color="red")
+                self.__log("Please manually close the dome by running"
+                           " `closedown` and `logout`.", color="red")
+                exit(1)
     
     def __weather_ok(self) -> bool:
         """ Checks whether the sun has set, there is no rain (rain=0) and that 
@@ -229,7 +245,7 @@ class Session(object):
         else:
             return False
 
-    def __dome__status(self) -> bool:
+    def __dome_status(self) -> bool:
         """ Checks whether the slit is open or closed. Returns True if open, 
         False if closed.
         """

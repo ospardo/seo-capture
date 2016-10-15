@@ -16,7 +16,7 @@ raw_args = sys.argv
 
 # default values
 args = {'targets':[],  'time': 60.0, 'count': 5, 'binning': 2,
-        'rgb': True, 'test_only': False}
+        'rgb': True, 'demo': False}
 
 # iterate over the args looking for required and optional
 for arg in raw_args[1:]:
@@ -45,6 +45,7 @@ for arg in raw_args[1:]:
 
 s = Session.Session(args['targets'], args['time'], exposure_count = args['count'],
             rgb = args['rgb'], binning = args['binning'], demo = args['demo'])
+s.execute()
             
 
 
