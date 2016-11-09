@@ -1,0 +1,28 @@
+#!/usr/local/bin/python3
+import sys
+import argparse
+import zmq
+import os
+import json
+import sys
+sys.path.append("../seo-capture/")
+import Server
+
+# port to be used for zmq communication
+port = 27748
+
+# Create argument parser
+parser = argparse.ArgumentParser(description="Start the SEO queue server")
+parser.add_argument('--port', '-p', help="The default port for the server to listen on",
+                    type=int, default=port)
+parser.add_argument('--queuename', '-q', help="The prefix for the file name to store the queue",
+                    type=str, default="")
+
+# Parse arguments
+args = parser.parse_args()
+port = args.port
+queuename = args.queuename
+
+# start server
+server = Server.Server(port = port, queuename = queuename)
+server.start()

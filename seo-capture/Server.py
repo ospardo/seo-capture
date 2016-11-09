@@ -13,13 +13,13 @@ class Server(object):
     adds the request to the queue.
     """
 
-    def __init__(self, port: int = 27748, logdir: str = ""):
+    def __init__(self, port: int = 27748, queuename: str = ""):
         """ This creates a new server listening on the specified port; this does
         not start the server listening, it just creates the server. start() must
         be called for the server to be initialized. 
 
         port: the port to listen on
-        logdir: string to be prepended to the imaging queuelog
+        queuename: string to be prepended to the imaging queuelog
         """
         self.__log("Creating new queue server...", color="green")
         # the port to be used for communication
@@ -46,7 +46,7 @@ class Server(object):
 
         # file name for JSON store
         currdate = time.strftime("%Y-%m-%d", time.gmtime())
-        self.filename = logdir+currdate+"_imaging_queue.json"
+        self.filename = queuename+currdate+"_imaging_queue.json"
         self.file = open(self.filename, 'w')
         if self.file is None:
             self.__log("Unable to open queue!", color="red")
@@ -136,8 +136,3 @@ class Server(object):
                 self.__log("Received invalid admin state message...", color="magenta")
         else:
             self.__log("Received unknown admin message...", color+"magenta")
-
-            
-if __name__ == "__main__":
-    server = Server()
-    server.start()
