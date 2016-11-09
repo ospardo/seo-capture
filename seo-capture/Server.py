@@ -3,6 +3,9 @@
 import zmq
 import time
 import typing
+import signal
+import sys
+import json
 
 class Server(object):
     """ This class represents a server that listens for queueing requests from 
@@ -10,16 +13,26 @@ class Server(object):
     adds the request to the queue.
     """
 
-    def __init__(self, port: int = 27748):
+    def __init__(self, port: int = 27748, logdir: str = ""):
         """ This creates a new server listening on the specified port; this does
         not start the server listening, it just creates the server. start() must
         be called for the server to be initialized. 
 
         port: the port to listen on
+        logdir: string to be prepended to the imaging queuelog
         """
         self.__log("Creating new queue server...", color="green")
         # the port to be used for communication
         self.port = str(port)
+
+        # magic number for imaging requests
+        self.magic = 392919
+
+        # magic number for admin requests
+        self.magic_admin = 1224580
+
+        # whether we are enabled
+        self.enabled = False
 
         # zeroMQ context
         self.context = zmq.Context()
@@ -33,30 +46,49 @@ class Server(object):
 
         # file name for JSON store
         currdate = time.strftime("%Y-%m-%d", time.gmtime())
-        self.filename = currdate+"_queue.json"
-        self.file = open(self.filename, 'w', 1)
+        self.filename = logdir+currdate+"_imaging_queue.json"
+        self.file = open(self.filename, 'w')
         if self.file is None:
             self.__log("Unable to open queue!", color="red")
         self.__log("Storing queue in %s" % self.filename)
-
-
-    def __del__(self):
-        """ Called when the server is garbage collected - this closes
-        the JSON file (which should have already been written to disk)
-        """
         self.file.close()
+
+        # create a handler for SIGINT
+        signal.signal(signal.SIGINT, self.handle_exit)
+        
+
+    def handle_exit(self, signal, frame):
+        """ SIGINT handler to check for Ctrl+C for quitting the server. 
+        """
+        print("\033[1;31mAre you sure you would like to quit [y/n]?\033[0m")
+        choice = input().lower()
+        if choice == "y" or choice == "Y":
+            print("\033[1;31mQuitting server...\033[0m")
+            sys.exit(0)
+        
+    def __del__(self):
+        """ Called when the server is garbage collected - at this point, 
+        this function does nothing.
+        """
+        pass
+
         
     def start(self):
         """ Starts the servers listening for new requests; server blocks
         on the specified port until it receives a request
         """
         while True:
-            message = self.socket.recv()
-            self.__log("Received message from a client...")
-            self.process_message(message)
-            time.sleep(1)
-            self.socket.send_string("RECEIVED")
-
+            message = json.loads(self.socket.recv_json())
+            if message["magic"] == self.magic:
+                self.__log("Received imaging request from a client...")
+                self.save_request(message)
+                self.socket.send_string(str(self.magic))
+            elif message["magic"] == self.magic_admin:
+                self.__log("Received message from a client...")
+                self.process_message(message)
+                self.socket.send_string(str(self.magic_admin))
+            else:
+                self.__log("Received invalid message from a client...")
             
     def __log(self, msg: str, color: str = "white") -> bool:
         """ Prints a log message to STDOUT. Returns True if successful, False
@@ -69,13 +101,43 @@ class Server(object):
         print(log)
         return True
 
+    
+    def enable(self) -> bool:
+        """ Enable the queue server to start taking imaging requests
+        """
+        self.enabled = True
 
-    def process_message(self, msg: str) -> list:
+        
+    def disable(self) -> bool:
+        """ Disable the queue server from taking any requests. 
+        """
+        self.enabled = False
+
+
+    def save_request(self, msg: str) -> list:
         """ This takes a raw message from zmq and writes the JSON data
         into the queue file. 
         """
+        self.file = open(self.filename, "a")
         self.file.write(str(msg)+"\n")
+        self.file.close()
 
+    def process_message(self, msg: str) -> list:
+        """ This processes an admin message to alter the server state.
+        """
+        if msg['type'] == 'state':
+            if msg['action'] == 'enable':
+                self.__log("Enabling queueing server...", color="cyan")
+                self.enabled = True
+            elif msg['action'] == 'disable':
+                self.__log("Disabling queueing server...", color="cyan")
+                self.enabled = False
+            else:
+                self.__log("Received invalid admin state message...", color="magenta")
+        else:
+            self.__log("Received unknown admin message...", color+"magenta")
+
+            
 if __name__ == "__main__":
     server = Server()
     server.start()

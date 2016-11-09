@@ -1,51 +1,60 @@
 #!/usr/local/bin/python3
-
 import sys
-sys.path.append("../seo-capture/")
-sys.path.append("seo-capture/")
-from Util import log
-import Session
+import argparse
+import zmq
+import os
+import json
 
-# break up command line
-if len(sys.argv) < 2:
-    print("usage: seo-capture -targets={<TARGET1>,<TARGET2>,...} -time=<TIME>\n"
-          "                   [-count=<1>] [-filters={i,r,g}]")
-    exit()
-    
-raw_args = sys.argv
+# port to be used for zmq communication
+port = 27748
+magic = 392919
 
-# default values
-args = {'targets':[],  'time': 60.0, 'count': 5, 'binning': 2,
-        'rgb': True, 'demo': False}
+# Create argument parser
+parser = argparse.ArgumentParser(description='Submit imaging requests to the Stone Edge Observatory')
+parser.add_argument('--targets', '-t', help="The list of targets to be imaged", required=True,
+                    type=str, nargs='+' )
+parser.add_argument('--exposure_time', '-e', help="The exposure time for each frame",
+                    default=60, type=float)
+parser.add_argument('--exposure_count', '-c', help="The total exposure count for each filter",
+                    default=1, type=int)
+parser.add_argument('--filters', '-f', help="The list of filters to be used for each exposure",
+                    default="clear", type=str)
+parser.add_argument('--binning', '-b', help="The desired CCD binning",
+                    default=2, type=int)
 
-# iterate over the args looking for required and optional
-for arg in raw_args[1:]:
+# Parse arguments
+args = parser.parse_args()
 
-    subargs = arg.split('=')
-    curr_arg = subargs[0][1:]
+# Create ZMQ context
+context = zmq.Context()
+context.RCVTIMEO = 1000 # timeout in ms
 
-    # check for targets
-    if curr_arg == "targets":
-        args['targets'].append(subargs[1])
+# Create socket
+socket = context.socket(zmq.REQ)
+socket.linger = 250 # linger time in ms
 
-    # check for time
-    elif curr_arg == "time":
-        args['time'] = float(subargs[1])
-        continue
-    elif curr_arg == "count":
-        args['count'] = int(subargs[1])
-        continue
-    elif curr_arg == "d":
-        args['demo'] = True
-    elif curr_arg == "binning":
-        args['binning'] = int(subargs[1])
-    else:
-        print("Unable to parse commmand line argument: "+arg)
+# Connect to SEO server
+socket.connect("tcp://localhost:%s" % port)
 
+# Build imaging session request
+msg = {}
+msg['magic'] = magic
+msg['targets'] = args.targets
+msg['exposure_time'] = args.exposure_time
+msg['exposure_count'] = args.exposure_count
+msg['filter'] = args.filters
+msg['binning'] = args.binning
+msg['user'] = os.environ['HOME']
 
-s = Session.Session(args['targets'], args['time'], exposure_count = args['count'],
-            rgb = args['rgb'], binning = args['binning'], demo = args['demo'])
-s.execute()
-            
+# Send imaging request
+socket.send_json(json.dumps(msg))
 
-
+# Check for a reply from the server
+try:
+    reply = int(socket.recv())
+    if reply == magic: # we've received a valid response
+        print("\033[1;32mRequest successfully submitted!\033[0m")
+    else: # response was received, but it's not valid
+        print("\033[1;31mInvalid response was received from the server...\033[0m")
+except: # no response was received
+    print("\033[1;31mNo response was received from the server...\033[0m")
