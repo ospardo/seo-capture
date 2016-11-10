@@ -17,11 +17,12 @@ class Executor(object):
 
         # load queue from disk
         self.sessions = self.load_queue(self.filename)
+        print(self.sessions)
 
         
     def load_queue(self, filename: str) -> list:
         """ This loads a JSON queue file into a list of Python session
         objects that can then be executed. 
         """
-        pass
-
+        with open(self.filename) as queue:
+            return json.load(queue)

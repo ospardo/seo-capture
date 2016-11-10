@@ -3,7 +3,12 @@
 import argparse
 parser = argparse.ArgumentParser()
 
-parser.parse_args()
+# Create argument parser
+parser = argparse.ArgumentParser(description='Execute a Stone Edge imaging queue')
+parser.add_argument('--file', '-f', help="The file containg the imaging queue", required=True,
+                    type=str)
 
+args = parser.parse_args()
+executor = Executor.Executor(args.file)
 
 
