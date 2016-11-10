@@ -35,6 +35,10 @@ class Session(object):
             binning: the desired CCD binning
             user: the username of the user who requested/created the session
         """
+
+        # get user
+        self.user = user
+        
         self.__log("Creating new imaging session for user: "+str(self.user)+"...",
                    color="green")
         
@@ -58,9 +62,6 @@ class Session(object):
         # What binning to use
         self.binning = binning
         self.__log("CCD Binning: "+str(self.binning))
-
-        # get user
-        self.user = user
 
         # assign the telescope
         self.telescope = Telescope.Telescope()
@@ -133,3 +134,10 @@ class Session(object):
             self.close()
 
         return True
+
+
+    def __log(self, msg: str, color: str = "white") -> bool:
+        """ Prints a log message to STDOUT. Returns True if successful, False
+        otherwise.
+        """
+        return Util.log(msg, color)    
