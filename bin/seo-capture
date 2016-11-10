@@ -4,10 +4,9 @@ import argparse
 import zmq
 import os
 import json
-
-# port to be used for zmq communication
-port = 27748
-magic = 392919
+import sys
+sys.path.append("..")
+import Session
 
 # Create argument parser
 parser = argparse.ArgumentParser(description='Submit imaging requests to the Stone Edge Observatory')
@@ -25,36 +24,14 @@ parser.add_argument('--binning', '-b', help="The desired CCD binning",
 # Parse arguments
 args = parser.parse_args()
 
-# Create ZMQ context
-context = zmq.Context()
-context.RCVTIMEO = 1000 # timeout in ms
+# Create a new imaging session
+s = Session.Session(targets = args.targets,
+                    exposure_time = args.exposure_time,
+                    exposure_count = args.exposure_count,
+                    filters = args.filters,
+                    binning = args.binning,
+                    user = os.environ['USER'])
 
-# Create socket
-socket = context.socket(zmq.REQ)
-socket.linger = 250 # linger time in ms
+# execute the session
+s.execute()
 
-# Connect to SEO server
-socket.connect("tcp://localhost:%s" % port)
-
-# Build imaging session request
-msg = {}
-msg['magic'] = magic
-msg['targets'] = args.targets
-msg['exposure_time'] = args.exposure_time
-msg['exposure_count'] = args.exposure_count
-msg['filter'] = args.filters
-msg['binning'] = args.binning
-msg['user'] = os.environ['HOME']
-
-# Send imaging request
-socket.send_json(json.dumps(msg))
-
-# Check for a reply from the server
-try:
-    reply = int(socket.recv())
-    if reply == magic: # we've received a valid response
-        print("\033[1;32mRequest successfully submitted!\033[0m")
-    else: # response was received, but it's not valid
-        print("\033[1;31mInvalid response was received from the server...\033[0m")
-except: # no response was received
-    print("\033[1;31mNo response was received from the server...\033[0m")
