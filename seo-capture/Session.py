@@ -1,5 +1,6 @@
 from typing import List, Union
 from Util import find_value
+import Telescope
 import subprocess
 import Util
 import time
@@ -58,6 +59,12 @@ class Session(object):
         self.binning = binning
         self.__log("CCD Binning: "+str(self.binning))
 
+        # get user
+        self.user = user
+
+        # assign the telescope
+        self.telescope = Telescope.Telescope()
+
         
     def execute(self) -> int: 
         """ Starts the execution of the imaging session; return's status
@@ -65,26 +72,22 @@ class Session(object):
         """
 
         # check if the dome is already open
-        if self.__dome_status() is False: # dome is closed
-            self.__open_dome()
+        if self.telescope.dome_status() is False: # dome is closed
+            self.telescope.open_dome()
             
         # image each target
         for target in self.targets:
 
-            # check whether object is visible, and try panning
+            # enable tracking again as a precaution
+            self.telescope.enable_tracking()
+
+            # check whether object is visible, and try slewing the
             # telescope to point at object
-            if self.__goto_target(target) is False:
+            if self.telescope.goto_target(target) is False:
                 self.__log("Unable to point telescope at "+target+". Object"
                            " is most likely not visible or there has been a"
                            " telescope error. Skipping "+target+"...", color="red")
                 continue # try imaging next target
-
-            # telescope was succesfully pointed at object
-            # calculate necessary filters
-            if self.rgb is True:
-                filters = {'i', 'g', 'b'}
-            else:
-                filters = {'clear'}
 
             # variables to produce seo file format name
             year = time.strftime("%Y", time.gmtime()) # 2016
@@ -94,36 +97,39 @@ class Session(object):
             base_name += "_bin"+str(self.binning)+"_"+year+month+day+"_"
             base_name += self.user+"_num"
 
+            # how many darks we have taken
+            dark_count = 0
+            
             # take exposures for each filter
             for f in filters:
-                self.__change_filter(f)
+
+                #enable tracking as a precaution
+                self.telescope.enable_tracking()
+                
+                self.telescope.change_filter(f)
                 # take exposures! 
                 for n in range(self.exposure_count):
                     filename = str(target)+"_"+str(f)+base_name+str(n)+"_seo"
                     self.__log("Taking exposure {} for {}".format(n, target))
-                    self.__take_exposure(filename)
+                    self.telescope.take_exposure(filename)
+
+                filename = str(target)+"_dark"+base_name+str(dark_count)+"_seo"
+                dark_count += 1
+                self.telescope.take_dark(filename)
 
             # reset filter to clear
-            self.__change_filter('clear')
+            self.telescope.change_filter('clear')
 
-            # take exposure_count darks
-            for n in range(self.exposure_count):
-                filename = str(target)+"_clear"+base_name+str(n)+"_seo"
-                self.__take_dark(filename)
+            # take any leftover darks
+            for n in range(dark_count, self.exposure_count):
+                filename = str(target)+"_dark"+base_name+str(n)+"_seo"
+                self.telescope.take_dark(filename)
 
             # take exposure count biases
-            for n in range(self.exposure_count):
-                filename = str(target)+"_clear"+base_name+str(n)+"_seo"
-                self.__take_bias(filename)
+            for n in range(10*self.exposure_count):
+                filename = str(target)+"_bias"+base_name+str(n)+"_seo"
+                self.telescope.take_bias(filename)
 
-        if self.close_after is True:
             self.close()
 
         return True
-
-
-
-            
-
-
-

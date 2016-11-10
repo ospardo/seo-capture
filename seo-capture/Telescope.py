@@ -8,9 +8,9 @@ import Util
 class Telescope(object):
 
     def __init__(self):
+        # something here?
         pass
 
-    
     def open_dome(self) -> bool:
         """ Checks that the weather is acceptable, and then opens the dome, 
         if it is not already open, and  also enables tracking. 
